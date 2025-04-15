@@ -183,7 +183,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 timestep = 0
             # Save Q-Learning agent
             w_file = f"{Algorithm_name}_{episode}_{num_of_action}_{action_range[1]}.json"
-            full_path = os.path.join(f"w/{task_name}", Algorithm_name)
+            full_path = os.path.join(f"w/{task_name}", Algorithm_name, Experiment)
             agent.save_w(full_path, w_file)
         
         print('Complete')

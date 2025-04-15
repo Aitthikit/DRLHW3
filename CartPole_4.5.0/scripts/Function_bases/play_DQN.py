@@ -154,10 +154,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     task_name = str(args_cli.task).split('-')[0]  # Stabilize, SwingUp
     Algorithm_name = "DQN"
-    setup = "base"
+    Experiment = "base"
     episode = 4500
     q_value_file = f"{Algorithm_name}_{episode}_{num_of_action}_{action_range[1]}"
-    full_path = os.path.join(f"w/{task_name}", Algorithm_name)
+    full_path = os.path.join(f"w/{task_name}", Algorithm_name, Experiment)
     agent.load_model(full_path, q_value_file)
 
     # reset environment

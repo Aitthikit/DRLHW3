@@ -143,10 +143,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     task_name = str(args_cli.task).split('-')[0]  # Stabilize, SwingUp
     Algorithm_name = "LQ"
-    setup = "base"
+    Experiment = "base"
     episode = 0
     q_value_file = f"{Algorithm_name}_{episode}_{num_of_action}_{action_range[1]}.json"
-    full_path = os.path.join(f"w/{task_name}", Algorithm_name)
+    full_path = os.path.join(f"w/{task_name}", Algorithm_name, Experiment)
     agent.load_w(full_path, q_value_file)
 
     # reset environment
@@ -176,7 +176,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     obs = next_obs
 
                 obs_value_file = f"{Algorithm_name}_{episode}_{num_of_action}_{action_range[1]}.json"
-                full_path = os.path.join(f"obs/{task_name}", Algorithm_name,setup)
+                full_path = os.path.join(f"obs/{task_name}", Algorithm_name,Experiment)
                 # agent.save_model(full_path, q_value_file)
                 agent.save_obs_value(full_path, obs_value_file, obs_history)
 

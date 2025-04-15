@@ -102,7 +102,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     num_of_action = 7
     action_range = [-20.0, 20.0]  # [min, max]
     learning_rate = 0.005
-    hidden_dim = 128
+    hidden_dim = 64
     n_episodes = 5000
     n_observations = 4
     dropout = 0.1
@@ -144,10 +144,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     task_name = str(args_cli.task).split('-')[0]  # Stabilize, SwingUp
     Algorithm_name = "MCR"
-    setup = "base"
-    episode = 4500
-    q_value_file = f"{Algorithm_name}_{episode}_{num_of_action}_{action_range[1]}"
-    full_path = os.path.join(f"w/{task_name}", Algorithm_name)
+    Experiment = "base"
+    episode = 1600
+    q_value_file = f"{Algorithm_name}_{episode}_{num_of_action}_{action_range[1]}.json"
+    full_path = os.path.join(f"w/{task_name}", Algorithm_name, Experiment)
     agent.load_model(full_path, q_value_file)
 
     # reset environment
@@ -183,7 +183,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     obs = next_obs
 
                 obs_value_file = f"{Algorithm_name}_{episode}_{num_of_action}_{action_range[1]}.json"
-                full_path = os.path.join(f"obs/{task_name}", Algorithm_name,setup)
+                full_path = os.path.join(f"obs/{task_name}", Algorithm_name,Experiment)
                 # agent.save_model(full_path, q_value_file)
                 agent.save_obs_value(full_path, obs_value_file, obs_history)
 
