@@ -9,6 +9,7 @@ from torch.nn.functional import mse_loss
 from RL_Algorithm.RL_base_function import BaseAlgorithm
 import matplotlib
 import matplotlib.pyplot as plt
+import os
 
 
 
@@ -29,8 +30,8 @@ class Actor(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU()
+            nn.Linear(hidden_dim, output_dim),
+            nn.ReLU(),
         )
         self.mean = nn.Linear(hidden_dim, output_dim)
         self.log_std = nn.Parameter(torch.zeros(output_dim))  # Learned log std
@@ -59,12 +60,7 @@ class Actor(nn.Module):
             Tensor: Selected action values.
         """
         # ========= put your code here ========= #
-        # x = self.net(state)
-        # mean = self.mean(x)
-        # std = self.log_std.exp()
-        # return mean, std
         x = self.net(state)
-        x = self.mean(x)
         x = torch.softmax(x, dim=-1)  # Softmax to get probability distribution
         return x
         # ====================================== #
@@ -110,20 +106,15 @@ class Critic(nn.Module):
         """
         return self.net(state).squeeze(-1)
 
-class PPO(BaseAlgorithm):
+class A2C(BaseAlgorithm):
     def __init__(self, 
                 device = None, 
                 num_of_action: int = 2,
                 action_range: list = [-2.5, 2.5],
                 n_observations: int = 4,
                 hidden_dim = 256,
-                dropout = 0.05, 
                 learning_rate: float = 0.01,
-                tau: float = 0.005,
                 discount_factor: float = 0.95,
-                buffer_size: int = 256,
-                batch_size: int = 1,
-                clip: float = 0.2
                 ):
         """
         Actor-Critic algorithm implementation.
@@ -144,16 +135,9 @@ class PPO(BaseAlgorithm):
         # ========= put your code here ========= #
         self.device = device
         self.actor = Actor(n_observations, hidden_dim, num_of_action, learning_rate).to(device)
-        self.actor_target = Actor(n_observations, hidden_dim, num_of_action, learning_rate).to(device)
         self.critic = Critic(n_observations,  hidden_dim, learning_rate).to(device)
-        self.critic_target = Critic(n_observations,  hidden_dim, learning_rate).to(device)
 
-        self.batch_size = batch_size
-        self.tau = tau
         self.discount_factor = discount_factor
-        self.clip = clip
-
-        self.update_target_networks(tau=1)  # initialize target networks
         self.episode_durations = []
 
         # Experiment with different values and configurations to see how they affect the training process.
@@ -162,13 +146,11 @@ class PPO(BaseAlgorithm):
         pass
         # ====================================== #
 
-        super(PPO, self).__init__(
+        super(A2C, self).__init__(
             num_of_action=num_of_action,
             action_range=action_range,
             learning_rate=learning_rate,
             discount_factor=discount_factor,
-            buffer_size=buffer_size,
-            batch_size=batch_size,
         )
 
     def select_action(self, state, noise=0.0):
@@ -189,73 +171,29 @@ class PPO(BaseAlgorithm):
         probs = self.actor(state)
         probs = torch.clamp(probs, min=1e-6, max=1.0) # avoid log(0) or NaN sampling
         dist = torch.distributions.Categorical(probs)
-        # print(dist)
         action = dist.sample()
-        # print(action)
-        # action_clipped = action.clamp(*self.action_range)
         log_prob = dist.log_prob(action).sum(dim=-1)
-        # print(action_clipped,log_prob)
         return action, log_prob
         # ====================================== #
     
-    def generate_sample(self, batch_size):
-        """
-        Generates a batch sample from memory for training.
 
-        Returns:
-            Tuple: A tuple containing:
-                - state_batch (Tensor): The batch of current states.
-                - action_batch (Tensor): The batch of actions taken.
-                - reward_batch (Tensor): The batch of rewards received.
-                - next_state_batch (Tensor): The batch of next states received.
-                - done_batch (Tensor): The batch of dones received.
-        """
-        # Ensure there are enough samples in memory before proceeding
-        # Sample a batch from memory
-        # ========= put your code here ========= #
-        if len(self.memoryPPO) < batch_size:
-            return None
-        state_batch, action_batch, reward_batch, next_state_batch, done_batch, log_prob_batch= zip(*self.memoryPPO.sample())
-        return (
-            torch.stack([torch.tensor(s, dtype=torch.float32) for s in state_batch]).to(self.device),
-            torch.tensor(action_batch, dtype=torch.int64, device=self.device),
-            torch.tensor(reward_batch, dtype=torch.float32, device=self.device),
-            torch.stack([torch.tensor(s, dtype=torch.float32) for s in next_state_batch]).to(self.device),
-            torch.tensor(done_batch, dtype=torch.bool, device=self.device),
-            torch.tensor(log_prob_batch, dtype=torch.float32, device=self.device),
-        )
-        # ====================================== #
-
-    def calculate_loss(self, states, actions, rewards, next_states, dones, old_log_probs, advantages):
-        """
-        Computes the loss for policy optimization.
-
-        Args:
-            - states (Tensor): The batch of current states.
-            - actions (Tensor): The batch of actions taken.
-            - rewards (Tensor): The batch of rewards received.
-            - next_states (Tensor): The batch of next states received.
-            - dones (Tensor): The batch of dones received.
-
-        Returns:
-            Tensor: Computed critic & actor loss.
-        """
-        # ========= put your code here ========= #
-        # Update Critic
+    def calculate_loss(self, states, actions, rewards, next_states, dones):
+        # Value estimates
         values = self.critic(states)
-        critic_loss = mse_loss(values, rewards)
-        # Gradient clipping for critic
+        next_values = self.critic(next_states)
 
-        # Update Actor
-        logits = self.actor(states)                        # shape: (batch_size, num_actions)
-        dist = torch.distributions.Categorical(logits=logits)
-        new_log_probs = dist.log_prob(actions)             # shape: (batch_size,)
-        old_log_probs = old_log_probs.detach()
-        # Gradient clipping for actor
-        ratio = torch.exp(new_log_probs - old_log_probs)
-        surrogate1 = ratio * advantages
-        surrogate2 = torch.clamp(ratio, 1 - self.clip, 1 + self.clip) * advantages
-        actor_loss = -torch.min(surrogate1, surrogate2).mean()
+        # TD target
+        td_target = rewards + self.discount_factor * next_values
+        advantages = td_target - values
+
+        # Actor Loss
+        logits = self.actor(states)
+        dist = torch.distributions.Categorical(logits)
+        log_probs = dist.log_prob(actions)
+        actor_loss = -(log_probs * advantages.detach()).mean()
+
+        # Critic Loss (MSE between value and target)
+        critic_loss = (advantages ** 2).mean()
 
         return actor_loss, critic_loss
         # ====================================== #
@@ -263,7 +201,8 @@ class PPO(BaseAlgorithm):
         std = tensor.std()
         return (tensor - tensor.mean()) / (std + eps) if std > 0 else tensor - tensor.mean()
 
-    def update_policy(self):
+
+    def update_policy(self,state, action, reward, next_state, done):
         """
         Update the policy using the calculated loss.
 
@@ -271,61 +210,19 @@ class PPO(BaseAlgorithm):
             float: Loss value after the update.
         """
         # ========= put your code here ========= #
-        sample = self.generate_sample(self.batch_size)
-        if sample is None:
-            return 0,0
-        states, actions, rewards, next_states, dones,old_log_probs = sample
+        action = action.long()
 
-        actions = actions.long()
+        actor_loss, critic_loss = self.calculate_loss(state, action, reward, next_state, done)
 
-        with torch.no_grad():
-            # Estimate state values
-            values = self.critic(states)
-            next_values = self.critic(next_states)
-            td_target = rewards + self.discount_factor * next_values * (~dones)
-            advantages = td_target - values
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-6)
-            # advantages = self.safe_standardize(advantages)
-
-            # Get action probabilities from the actor
-            # action_probs = self.actor(states)
-            # dist = torch.distributions.Categorical(action_probs)
-            # old_log_probs = dist.log_prob(actions)
-
-        # Normalize rewards (optional but often helpful)
-        # rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
-        rewards = self.safe_standardize(rewards)
-
-        # Compute critic and actor loss
-        actor_loss, critic_loss = self.calculate_loss(states, actions, rewards, next_states, dones, old_log_probs, advantages)
-        
-        # Backpropagate and update critic network parameters
-        
         self.critic.optimizer.zero_grad()
         critic_loss.backward()
         self.critic.optimizer.step()
-        # Backpropagate and update actor network parameters
+
         self.actor.optimizer.zero_grad()
         actor_loss.backward()
         self.actor.optimizer.step()
-        # ====================================== #
+
         return actor_loss, critic_loss
-
-
-    def update_target_networks(self, tau=None):
-        """
-        Perform soft update of target networks using Polyak averaging.
-
-        Args:
-            tau (float, optional): Update rate. Defaults to self.tau.
-        """
-        # ========= put your code here ========= #
-        if tau is None:
-            tau = self.tau
-
-        for target_param, param in zip(self.critic_target.parameters(), self.critic.parameters()):
-            target_param.data.copy_(tau * param.data + (1.0 - tau) * target_param.data)
-        # ====================================== #
 
     def learn(self, env, max_steps, num_agents, noise_scale=0.1, noise_decay=0.99):
         """
@@ -347,6 +244,8 @@ class PPO(BaseAlgorithm):
         # ========= put your code here ========= #
         obs,_ = env.reset()
         total_reward = 0
+        total_actorloss = 0
+        total_criticloss = 0
         # ====================================== #
 
         for step in range(max_steps):
@@ -370,16 +269,12 @@ class PPO(BaseAlgorithm):
 
             # Store the transition in memory
             # ========= put your code here ========= #
-            self.memoryPPO.add(state, action, reward, next_state, done,log_prob)
-            # Parallel Agents Training
-            if num_agents > 1:
-                pass
-            # Single Agent Training
-            else:
-                pass
+            actor_loss, critic_loss = self.update_policy(state, action, reward, next_state, done)
             # ====================================== #
 
             # Update state
+            total_actorloss += actor_loss
+            total_criticloss += critic_loss
             total_reward += reward
             obs = next_obs
             # Decay the noise to gradually shift from exploration to exploitation
@@ -388,10 +283,7 @@ class PPO(BaseAlgorithm):
                 break
 
             # Perform one step of the optimization (on the policy network)
-        actor_loss, critic_loss = self.update_policy()
-
-            # Update target networks
-        self.update_target_networks()
+        
 
         return total_reward,step,actor_loss, critic_loss
 
@@ -423,3 +315,36 @@ class PPO(BaseAlgorithm):
         #     else:
         #         display.display(plt.gcf())
     # ================================================================================== #
+    def save_model(self, path, filename):
+        """
+        Save the actor and critic network weights to a single file.
+
+        Args:
+            path (str): Directory to save the model weights.
+            filename (str): Filename for the saved weights.
+        """
+        os.makedirs(path, exist_ok=True)
+        full_path = os.path.join(path, filename)
+        
+        torch.save({
+            'actor_state_dict': self.actor.state_dict(),
+            'critic_state_dict': self.critic.state_dict()
+        }, full_path)
+
+        print(f"Actor and Critic models saved to {full_path}")
+
+    def load_model(self, path, filename):
+        """
+        Load the actor and critic network weights from a file.
+
+        Args:
+            path (str): Directory where the model weights are saved.
+            filename (str): Filename of the saved weights.
+        """
+        full_path = os.path.join(path, filename)
+        
+        checkpoint = torch.load(full_path)
+        self.actor.load_state_dict(checkpoint['actor_state_dict'])
+        self.critic.load_state_dict(checkpoint['critic_state_dict'])
+
+        print(f"Actor and Critic models loaded from {full_path}")
